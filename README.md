@@ -33,7 +33,6 @@ Defect_Pixel_Finder/
    └─ grab_worker.py        # 프레임 드레인용 백그라운드 스레드
 ```
 
-```markdown
 ## Module Diagram
 
 ```mermaid
