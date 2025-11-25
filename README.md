@@ -2,7 +2,7 @@
 
 PyQt5 기반 GUI 도구로, 카메라/이미지에서 **Dark / Bright 불량 픽셀(defect pixel)** 을 탐지하고
 결과를 CSV로 저장하는 프로젝트입니다. 
-<img width="1186" height="638" alt="image" src="https://github.com/user-attachments/assets/8032e9a0-dcd8-4c34-a4f8-87eb9fc61a82" />
+<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/5b605817-72b9-4e89-b5f3-57a5008c557f" />
 
 ---
 
