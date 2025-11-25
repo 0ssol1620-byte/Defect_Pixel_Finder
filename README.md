@@ -15,15 +15,6 @@ PyQt5 기반 GUI 도구로, 카메라/이미지에서 **Dark / Bright 불량 픽
 
 ---
 
-## Architecture Diagram
-
-```mermaid
-flowchart LR
-    A[Camera / Image File] --> B[CameraController<br/>or File Loader]
-    B --> C[defect_detection.py<br/>Defect Detection]
-    C --> D[draw_overlay.py<br/>Overlay Renderer]
-    D --> E[defect_tool_ui.py<br/>PyQt GUI]
-```
 
 ## 디렉터리 구조
 
@@ -40,6 +31,36 @@ Defect_Pixel_Finder/
 │  └─ controller_pool.py    # CameraController 풀/관리
 └─ workers/
    └─ grab_worker.py        # 프레임 드레인용 백그라운드 스레드
+```
+
+```markdown
+## Module Diagram
+```
+
+```mermaid
+flowchart TB
+    subgraph Core
+        CC[camera_controller.py]
+        CF[camera_facade.py]
+        CP[controller_pool.py]
+    end
+
+    subgraph Workers
+        GW[grab_worker.py]
+    end
+
+    subgraph UI
+        DT[defect_tool_ui.py]
+        DO[draw_overlay.py]
+    end
+
+    DD[defect_detection.py]
+
+    CC --> CF --> DT
+    CP --> CC
+    GW --> DT
+    DT --> DD
+    DD --> DO
 ```
 
 ---
