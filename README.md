@@ -1,233 +1,214 @@
 # Defect Pixel Finder
 
-PyQt5 기반 GUI 도구로, 카메라/이미지에서 **Dark / Bright 불량 픽셀(defect pixel)** 을 탐지하고
-결과를 CSV로 저장하는 프로젝트입니다. 
+A PyQt5-based GUI tool that detects **dark/bright defect pixels** in camera images and exports the results as CSV.
 
 <img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/5b605817-72b9-4e89-b5f3-57a5008c557f" />
 
 ---
 
-## 주요 기능
+## Main Features
 
-- 단일 프레임에서 Dark / Bright 불량 픽셀 탐지
-- 8bit 및 10/12/14/16bit 이미지 지원 (Bayer RAW, Mono, RGB 계열)
-- Euresys Coaxlink + eGrabber 기반 카메라 연동 (없는 경우에는 파일 불러오기 모드로 사용)
-- 불량 픽셀 위치를 이미지 위에 오버레이로 시각화
-- 불량 픽셀 목록을 CSV로 내보내기
+- Detects dark and bright defect pixels from a single frame
+- Supports 8-bit and 10/12/14/16-bit images (Bayer RAW, mono, and RGB formats)
+- Integrates with Euresys Coaxlink + eGrabber cameras  
+  (or runs in file-only mode when no camera is available)
+- Visualizes defect locations as overlays on the image
+- Exports defect pixel lists to CSV
 
 ---
 
-
-## 디렉터리 구조
+## Project Structure
 
 ```text
 Defect_Pixel_Finder/
-├─ main.py                  # 프로그램 엔트리 포인트
-├─ defect_tool_ui.py        # PyQt5 GUI (메인 윈도우)
-├─ defect_detection.py      # 불량 픽셀 탐지 알고리즘
-├─ draw_overlay.py          # 이미지 위에 불량 픽셀 표시용 오버레이
+├─ main.py                  # Application entry point
+├─ defect_tool_ui.py        # PyQt5 GUI (main window)
+├─ defect_detection.py      # Defect pixel detection algorithms
+├─ draw_overlay.py          # Overlay drawing utilities for defect visualization
 ├─ core/
-│  ├─ camera_controller.py  # eGrabber 기반 카메라 제어
-│  ├─ camera_exceptions.py  # 카메라 관련 예외 정의
-│  ├─ camera_facade.py      # Qt 용 QOject 래퍼(CxpCamera)
-│  └─ controller_pool.py    # CameraController 풀/관리
+│  ├─ camera_controller.py  # eGrabber-based camera control
+│  ├─ camera_exceptions.py  # Camera-related exception definitions
+│  ├─ camera_facade.py      # Qt QObject wrapper (CxpCamera)
+│  └─ controller_pool.py    # CameraController pool/registry
 └─ workers/
-   └─ grab_worker.py        # 프레임 드레인용 백그라운드 스레드
-```
-
-## Module Diagram
-
-```mermaid
-flowchart TB
-    subgraph Core
-        CC[camera_controller.py]
-        CF[camera_facade.py]
-        CP[controller_pool.py]
-    end
-
-    subgraph Workers
-        GW[grab_worker.py]
-    end
-
-    subgraph UI
-        DT[defect_tool_ui.py]
-        DO[draw_overlay.py]
-    end
-
-    DD[defect_detection.py]
-
-    CC --> CF --> DT
-    CP --> CC
-    GW --> DT
-    DT --> DD
-    DD --> DO
+   └─ grab_worker.py        # Background frame-drain worker thread
 ```
 
 ---
 
-## 각 모듈 설명
+## Module Overview
 
 ### `main.py`
 
-- 명령행 인자 파싱
+- Parses command line arguments:
   - `--log-level {DEBUG,INFO,WARNING,ERROR}`
-  - `--highdpi` : Qt High-DPI 스케일링 강제
-  - `--icon` : 윈도우 아이콘 파일 경로
-- `QApplication` 을 생성하고 `DefectTool` 위젯을 띄운 뒤 이벤트 루프 실행
-
-### `defect_tool_ui.py`
-
-불량 픽셀 찾기 툴의 메인 UI를 구현합니다.
-
-- **버튼/컨트롤**
-  - Connect : 카메라 탐색 후 첫 번째 카메라 연결
-  - Snap    : 현재 프레임 한 장 캡처
-  - Open Image : 파일에서 이미지 열기
-  - Dark Search / Bright Search : 현재 이미지에 대해 불량 픽셀 검색
-  - Export CSV : 탐지된 불량 픽셀 목록을 CSV로 저장
-- **파라미터**
-  - Block size      : 타일 크기 (지역 평균 계산용)
-  - Dark level (DN) : 다크 픽셀 기준 DN 오프셋
-  - Bright (±%)     : 주변 평균 대비 편차 비율
-  - PixelFormat (Load) : 파일 로드시 가정할 픽셀 포맷
-  - Histogram normalize / stretch : 화면 표시용 히스토그램 정규화/스트레치
-- 카메라에서 프레임을 가져오거나, 파일에서 이미지를 읽어와
-  `defect_detection.py` 의 알고리즘을 호출해 Dark/Bright 결과를 얻습니다.
-- `draw_overlay.py` 의 기능을 사용해 이미지 위에 사각형/마커를 오버레이합니다.
-
-### `defect_detection.py`
-
-실제 불량 픽셀 탐지 로직이 들어있는 모듈입니다.
-
-주요 역할:
-
-- Bayer / Mono / RGB 등 포맷을 공통의 그레이스케일 포맷으로 변환
-- 블록 평균 및 보간을 이용한 지역 평균 계산
-- Dark / Bright 픽셀 판단
-- 마스크에서 클러스터(영역)를 만들어 내고, 그 사각형/개수/점 리스트를 반환
-
-파일 안에는 대략 다음과 같은 함수들이 들어있습니다.
-
-- 포맷/전처리
-  - `bayer_to_flat(...)`, `bayer_flatfield_equalize(...)`
-  - `rgb_flatfield_equalize(...)`
-  - 히스토그램 정규화 유틸
-- 불량 픽셀 탐지
-  - `FindDarkFieldClusterRect_...`
-  - `FindBrightFieldClusterRect_...`
-- 마스크 → 클러스터 변환 헬퍼
-
-### `draw_overlay.py`
-
-- `DefectLoc` : 오버레이 하나(색, 두께, 사각형, 라벨)를 표현하는 데이터 클래스
-- `DrawFigure` : 여러 개의 `DefectLoc` 을 관리하며, 원본 이미지 위에 그려 주는 헬퍼
-
-GUI에서 검출 결과를 표시할 때 이 모듈을 사용합니다.
-
-### `core` 패키지
-
-#### `camera_controller.py`
-
-- Euresys eGrabber 기반 카메라를 제어하는 클래스
-- 카메라 검색, 연결/해제, 그랩 시작/중지, 프레임 수신 등을 담당
-- 신호/슬롯을 통해 새 프레임이 들어올 때 상위 레이어에 알려줍니다.
-- eGrabber 모듈이 없는 환경에서는 더미 클래스로 동작하도록 설계되어 있어
-  카메라 없이도 프로그램 자체는 실행 가능하게 되어 있습니다.
-
-#### `camera_facade.py`
-
-- `CxpCamera` 라는 Qt `QObject` 래퍼를 정의
-- 내부에서 `CameraController` 를 사용하며, UI 쪽에서는 보다 단순한 인터페이스로
-  사용할 수 있도록 감싼 형태입니다.
-
-#### `controller_pool.py`
-
-- 여러 `CameraController` 인스턴스를 ID 기준으로 등록/조회/브로드캐스트할 수 있는
-  글로벌 풀을 관리합니다.
-
-#### `camera_exceptions.py`
-
-- 카메라 관련 오류를 표현하는 커스텀 예외 클래스들을 정의합니다.
-
-### `workers/grab_worker.py`
-
-- `QThread` 기반의 백그라운드 스레드
-- 카메라에서 들어오는 프레임을 연속으로 읽어와 상위로 전달하는 역할
-- 드라이버 버퍼 오버플로 방지를 위해 큐를 지속적으로 비워 주는 용도입니다.
+  - `--highdpi` – force Qt High-DPI scaling
+  - `--icon` – path to the window/taskbar icon file
+- Creates the `QApplication`, instantiates the `DefectTool` widget, and starts the event loop
 
 ---
 
-## 설치 및 실행
+### `defect_tool_ui.py`
 
-### 1) 의존성
+Implements the main GUI for defect pixel inspection.
 
-- Python 3.8 이상 권장
-- 필수 패키지
+- **Buttons / Controls**
+  - **Connect** – search for and connect to the first available camera
+  - **Snap** – capture a single frame
+  - **Open Image** – load an image from file
+  - **Dark Search / Bright Search** – run defect detection on the current image
+  - **Export CSV** – save detected defect pixels to a CSV file
+
+- **Parameters**
+  - **Block size** – tile size used for local statistics
+  - **Dark level (DN)** – threshold offset for dark pixels
+  - **Bright (±%)** – percentage deviation threshold relative to the local average
+  - **PixelFormat (Load)** – assumed pixel format when loading images from file
+  - **Histogram normalize / stretch** – display-time histogram normalization/stretch
+
+Frames from the camera or images loaded from disk are passed to the algorithms in
+`defect_detection.py` to get dark/bright defect results.  
+`draw_overlay.py` is used to draw rectangles/markers on top of the image for visualization.
+
+---
+
+### `defect_detection.py`
+
+Contains the main defect pixel detection logic.
+
+Key responsibilities:
+
+- Convert Bayer / mono / RGB formats to a common grayscale representation
+- Compute local averages using block statistics and interpolation
+- Decide whether each pixel is dark or bright relative to its local context
+- Generate clusters (regions) from a binary defect mask and return rectangles,
+  counts, and lists of points
+
+Representative functions include:
+
+- **Format / Preprocessing**
+  - `bayer_to_flat(...)`, `bayer_flatfield_equalize(...)`
+  - `rgb_flatfield_equalize(...)`
+  - Histogram normalization utilities
+- **Defect Detection**
+  - `FindDarkFieldClusterRect_...`
+  - `FindBrightFieldClusterRect_...`
+- **Mask → Cluster**
+  - Helper functions that convert masks into clustered regions
+
+---
+
+### `draw_overlay.py`
+
+- `DefectLoc` – data class representing a single overlay item (color, line width, rectangle, label)
+- `DrawFigure` – manages multiple `DefectLoc` items and renders them onto the original image
+
+The GUI uses this module to display detection results on top of the image.
+
+---
+
+### `core` Package
+
+#### `camera_controller.py`
+
+- Controls cameras via the Euresys eGrabber SDK
+- Discovers cameras, connects/disconnects, starts/stops grabbing, and receives frames
+- Emits signals when new frames arrive so that upper layers can react
+- Provides dummy classes when the eGrabber module is unavailable so that the
+  application can still run without a physical camera
+
+#### `camera_facade.py`
+
+- Defines the `CxpCamera` Qt `QObject` wrapper
+- Internally uses `CameraController` and exposes a simpler interface for the UI layer
+
+#### `controller_pool.py`
+
+- Manages a global pool of `CameraController` instances
+- Registers controllers with IDs and supports lookup and broadcast operations
+
+#### `camera_exceptions.py`
+
+- Defines custom exception classes for camera-related errors
+
+---
+
+### `workers/grab_worker.py`
+
+- A `QThread`-based background worker
+- Continuously drains frames from the camera and forwards them upstream
+- Helps prevent driver buffer overruns by keeping the queue empty
+
+---
+
+## Installation & Execution
+
+### 1) Dependencies
+
+- Python 3.8 or later (recommended)
+- Required packages:
   - `PyQt5`
   - `numpy`
   - `opencv-python`
-- 카메라 연동을 사용할 경우 (선택)
-  - Euresys Coaxlink 보드
-  - Euresys eGrabber SDK 및 Python 바인딩
+- Optional (for camera integration):
+  - Euresys Coaxlink frame grabber
+  - Euresys eGrabber SDK and Python bindings
 
-예시:
+Example:
 
 ```bash
 pip install PyQt5 numpy opencv-python
-# eGrabber 관련 모듈은 Euresys 공식 설치 프로그램으로 설치
+# Install eGrabber and its Python module using the official Euresys installer
 ```
 
-### 2) 실행 방법
+### 2) Run
 
 ```bash
 python main.py --log-level INFO --highdpi
 ```
 
-또는
+or:
 
 ```bash
 python -m main
 ```
 
-옵션:
+Options:
 
-- `--log-level` : `DEBUG / INFO / WARNING / ERROR` 중 선택
-- `--highdpi` : 고해상도 모니터에서 강제로 High-DPI 스케일링 활성화
-- `--icon` : 윈도우 타이틀/작업표시줄 아이콘으로 사용할 파일 지정
-
----
-
-## 사용 예시
-
-### 카메라가 있을 때
-
-1. 프로그램 실행
-2. **Connect** 버튼 클릭 → 카메라 검색 및 연결
-3. **Snap** 버튼으로 프레임 1장 캡처
-4. Block size, Dark level, Bright% 를 조정
-5. **Dark Search**, **Bright Search** 버튼으로 불량 픽셀 검색
-6. 결과 오버레이를 확인하고, 필요하다면 **Export CSV** 로 저장
-
-### 카메라 없이 이미지 파일로만 사용할 때
-
-1. 프로그램 실행
-2. **Open Image** 버튼으로 테스트 이미지를 선택
-3. PixelFormat (Load) 을 실제 포맷에 맞게 선택
-4. 나머지 파라미터를 조정 후 Dark/Bright Search 수행
-5. CSV 저장
+- `--log-level` : one of `DEBUG`, `INFO`, `WARNING`, `ERROR`
+- `--highdpi`   : force High-DPI scaling on high-resolution monitors
+- `--icon`      : icon file to use for the window/taskbar
 
 ---
 
-## CSV 포맷
+## Usage Examples
 
-CSV는 대략 다음과 같은 형식으로 저장되도록 구성할 수 있습니다
-(실제 구현 내용에 따라 헤더 등은 수정될 수 있습니다).
+### With a Camera
+
+1. Launch the application  
+2. Click **Connect** to detect and connect to a camera  
+3. Click **Snap** to capture one frame  
+4. Adjust Block size, Dark level, and Bright%  
+5. Click **Dark Search** / **Bright Search** to detect defect pixels  
+6. Inspect the overlay; export results to CSV if needed  
+
+### Without a Camera (Image File Only)
+
+1. Launch the application  
+2. Click **Open Image** to select a test image  
+3. Set **PixelFormat (Load)** to match the actual image format  
+4. Adjust the parameters and run Dark/Bright Search  
+5. Save the results as CSV  
+
+---
+
+## CSV Format
+
+The CSV output is roughly as follows (actual headers may differ depending on implementation):
 
 ```text
-x,y   # 각 줄이 하나의 불량 픽셀 좌표 (열, 행)
+x,y   # each line represents one defect pixel coordinate (column, row)
 10,15
 100,200
 ...
 ```
-
-
