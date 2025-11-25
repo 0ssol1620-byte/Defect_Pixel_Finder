@@ -35,7 +35,6 @@ Defect_Pixel_Finder/
 
 ```markdown
 ## Module Diagram
-```
 
 ```mermaid
 flowchart TB
