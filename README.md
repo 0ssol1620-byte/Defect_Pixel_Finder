@@ -42,7 +42,7 @@ The app is designed so that:
   - Mono and Bayer RAW images
   - 8-bit and 10/12/14/16-bit formats
 - Visualizes results as overlays on the image.
-- Exports defects as a **C-compatible CSV** defect map.
+- Exports defects as a **CSV** defect map.
 
 ### Who it is for
 
