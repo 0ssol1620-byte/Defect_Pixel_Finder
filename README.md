@@ -1,13 +1,14 @@
 # Defect Pixel Finder
 
-**Defect Pixel Finder** is a PyQt5-based desktop tool for detecting **dark and bright defect pixels**
-in images from machine-vision cameras. 
+**Defect Pixel Finder** is a PyQt5-based desktop tool that helps you **find dark and bright defect pixels**
+in camera images – and export the results as a simple CSV file.
 
-The app is designed so that:
+You can:
 
-> Test / production engineers can inspect and export defect maps  
-> **without writing any code**, using a simple GUI –  
-> while developers still have a clean, testable Python implementation underneath.
+- Connect to a CoaXPress camera (via Euresys eGrabber) **or** just load image files
+- Adjust detection thresholds from the UI
+- See defect pixels overlaid directly on the image
+- Save the list of defect pixels for further analysis or production use
 
 <img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/5b605817-72b9-4e89-b5f3-57a5008c557f" />
 
@@ -15,252 +16,207 @@ The app is designed so that:
 
 ## Table of Contents
 
-1. [Key Concepts & Benefits](#key-concepts--benefits)  
+1. [What It Does & Why](#what-it-does--why)  
 2. [Typical Use Cases](#typical-use-cases)  
-3. [High-level Architecture](#high-level-architecture)  
-4. [UI Overview – Using the App Without Coding](#ui-overview--using-the-app-without-coding)  
-   - [Connection & Image Acquisition](#connection--image-acquisition)  
-   - [Defect Search Controls](#defect-search-controls)  
-   - [Overlay & Statistics](#overlay--statistics)  
-   - [CSV Export](#csv-export)  
-5. [Detection Logic & Algorithms](#detection-logic--algorithms)  
+3. [Project Structure](#project-structure)  
+4. [Using the App Without Coding](#using-the-app-without-coding)  
+   - [1. Getting an Image](#1-getting-an-image)  
+   - [2. Setting Detection Parameters](#2-setting-detection-parameters)  
+   - [3. Running Dark / Bright Search](#3-running-dark--bright-search)  
+   - [4. Checking Results & Exporting CSV](#4-checking-results--exporting-csv)  
+5. [How the Detection Works (High Level)](#how-the-detection-works-high-level)  
 6. [Requirements & Installation](#requirements--installation)  
-7. [Running the Application](#running-the-application)  
-8. [Limitations & Notes](#limitations--notes)
+7. [How to Run](#how-to-run)  
+8. [Notes & Limitations](#notes--limitations)
 
 ---
 
-## Key Concepts & Benefits
+## What It Does & Why
 
-### What Defect Pixel Finder does
+Many machine-vision cameras and image sensors have:
 
-- Connects to a CoaXPress camera (via Euresys eGrabber) **or** loads images from disk.
-- Detects:
-  - **Dark defects** (pixels darker than their local neighborhood)
-  - **Bright defects** (pixels brighter than their local neighborhood)
-- Supports:
-  - Mono and Bayer RAW images
-  - 8-bit and 10/12/14/16-bit formats
-- Visualizes results as overlays on the image.
-- Exports defects as a **CSV** defect map.
+- **Dark defects** – pixels that are consistently too dark
+- **Bright defects** – pixels that are consistently too bright
 
-### Who it is for
+Defect Pixel Finder helps you:
 
-- **Camera R&D / Image sensor engineers**
-  - Characterize sensor defects during development.
-- **Production / QA engineers**
-  - Run regular defect maps on cameras before shipment.
-- **FAE / Support**
-  - Inspect customer images to see whether artifacts are due to pixel defects.
+- Detect those pixels under controlled conditions (e.g. dark-field / flat-field images)
+- Visualize them on top of the image
+- Save them in a CSV for later processing or production calibration
 
-### Key benefits
+The focus is on a **clear workflow** for engineers and operators:
 
-- ✅ GUI-driven workflow; no programming required for normal use.  
-- ✅ Algorithm behavior matches the legacy C implementation (thresholds, rounding, etc.).  
-- ✅ Output CSV can be consumed by existing camera/sensor calibration pipelines.  
-- ✅ Works with both live camera input and offline image files.
+> “Capture image → adjust thresholds → see defects → export CSV”
 
 ---
 
 ## Typical Use Cases
 
-1. **Factory defect mapping**
-   - Connect camera on a test bench.
-   - Capture dark-field and bright-field frames.
-   - Run Dark/Bright defect search.
-   - Export CSV and feed it into production calibration process.
+- **Sensor evaluation in R&D**
+  - Check how many defect pixels a sensor has
+  - Compare results between samples or production lots
 
-2. **Sensor evaluation**
-   - Compare defect patterns across sensors or process lots.
-   - Tune thresholds (DN / %) to match internal criteria.
+- **Production / quality control**
+  - Run a simple defect check before shipping cameras
+  - Export defect lists to feed into your internal calibration tools
 
-3. **Field investigation**
-   - Load customer-captured images.
-   - Quickly see whether “hot” or “cold” pixels exist and where.
+- **Field troubleshooting**
+  - Inspect images from customer systems
+  - Quickly see if strange specks or dots are due to fixed defect pixels
 
 ---
 
-## High-level Architecture
+## Project Structure
 
 ```text
 Defect_Pixel_Finder/
 ├─ main.py                  # Application entry point
 ├─ defect_tool_ui.py        # PyQt5 GUI (main widget)
-├─ defect_detection.py      # Core defect detection algorithms
-├─ draw_overlay.py          # Overlay rendering on images
+├─ defect_detection.py      # Core defect detection algorithms (all Python/NumPy)
+├─ draw_overlay.py          # Overlay drawing utilities
 ├─ core/
 │  ├─ camera_controller.py  # eGrabber-based camera control (real or dummy)
 │  ├─ camera_exceptions.py  # Camera-related exceptions
-│  ├─ camera_facade.py      # Qt-friendly CxpCamera wrapper
-│  └─ controller_pool.py    # Global registry of CameraController instances
+│  ├─ camera_facade.py      # Qt-friendly camera wrapper (CxpCamera)
+│  └─ controller_pool.py    # Global registry of camera controllers
 └─ workers/
-   └─ grab_worker.py        # Background grabbing / draining worker
+   └─ grab_worker.py        # Background frame grabbing worker
 ```
 
-- **UI** layer: `defect_tool_ui.py` + `draw_overlay.py`  
-- **Algorithms**: `defect_detection.py`  
+- **UI**: `defect_tool_ui.py` + `draw_overlay.py`  
+- **Algorithms**: `defect_detection.py` (pure Python + NumPy)  
 - **Camera integration**: `core/` + `workers/grab_worker.py`  
 
 ---
 
-## UI Overview – Using the App Without Coding
+## Using the App Without Coding
 
-### Connection & Image Acquisition
+### 1. Getting an Image
 
-In the main window (`DefectTool` from `defect_tool_ui.py`), you typically see:
+In the main window you will find:
 
-- **Connect button**
-  - Discovers cameras via `CxpCamera` / `CameraController`.
-  - Reads camera `PixelFormat` to adjust valid DN ranges in the UI.
+- **Connect** – search for and connect to the first available camera
+- **Snap** – grab a single frame from the connected camera
+- **Open Image** – load an image file from disk
 
-- **Snap button**
-  - Grabs **one frame** from the camera.
-  - Updates the display and clears previous overlays/statistics.
+Supported files (via OpenCV):
 
-- **Open Image button**
-  - Loads an image from disk (`.tif`, `.png`, `.jpg`, `.bmp`, etc.).
-  - Uses OpenCV (`cv2.imread(..., IMREAD_UNCHANGED)`) to keep bit depth.
-  - Lets you choose an assumed pixel format (`PixelFormat (Load)`) for analysis.
+- `.tif` / `.tiff`
+- `.png`
+- `.jpg` / `.jpeg`
+- `.bmp`
 
-This means a non-programmer can:
-
-1. Choose whether to work with a real camera or saved images.
-2. Press a single button to get an image ready for defect inspection.
+If you do **not** have a camera connected, you can just use **Open Image** and work
+with saved images.
 
 ---
 
-### Defect Search Controls
+### 2. Setting Detection Parameters
 
-Key controls in the side panel:
+In the side panel you can adjust:
 
 - **Block size**
-  - Tile size for computing local statistics (mean of neighborhood).
-  - Smaller blocks → more locally sensitive, more potential false positives.  
-  - Larger blocks → smoother background, more robust but less sensitive.
+  - Size of the local neighborhood used to calculate an “average” value around each pixel
+  - Smaller block:
+    - More sensitive to local details
+    - May detect more defects and more false positives  
+  - Larger block:
+    - Smoother background
+    - Less sensitive to small local variations
 
 - **Dark level (DN)**
-  - Absolute DN offset used for dark defect thresholds.
-  - Internally combined with local averages for ≥10-bit images.
+  - How far below the local average a pixel must be to be considered “dark”
+  - DN stands for “digital number” (intensity value)
 
 - **Bright (±%)**
-  - Relative threshold (%) around local average.
-  - Pixels deviating more than this percentage can be classified as bright or low.
+  - How far above (or below) the local average a pixel must be, in percent, to be considered “bright” or “too low”
 
 - **PixelFormat (Load)**
-  - When working with files, tells the app which format to assume:
+  - When working with files, tells the app what kind of image it is, for example:
     - Mono8 / Mono16
-    - Bayer RAW variants (e.g. RGGB)
-    - BGR16, etc.
+    - Bayer RAW formats
+    - BGR16
 
-- **Histogram normalize / stretch**
-  - Affect only **display**, not the detection:
-    - Normalize: auto-stretch histogram for better visual contrast.
-    - Manual stretch slider: fine-tune brightness range for viewing.
-
-To run detection:
-
-1. Adjust `Block size`, `Dark level`, `Bright (±%)` to desired sensitivity.
-2. Click **Dark Search** and/or **Bright Search**.
-3. The overlay and counters update automatically.
+- **Histogram options (display only)**
+  - Histogram normalize / stretch slider:
+    - Only affect how the image **looks** on screen
+    - Do not affect the detection result
 
 ---
 
-### Overlay & Statistics
+### 3. Running Dark / Bright Search
+
+After loading or capturing an image:
+
+1. Adjust **Block size**, **Dark level (DN)**, and **Bright (±%)**.
+2. Click **Dark Search** to find dark defect pixels.
+3. Click **Bright Search** to find bright defect pixels.
+
+The app will:
+
+- Run the detection on the currently displayed image.
+- Show defects as colored rectangles on the image.
+- Update counters (how many dark / bright defects were found).
+
+---
+
+### 4. Checking Results & Exporting CSV
 
 The main image view:
 
-- Shows the current frame (live or loaded file).
-- Overlays rectangles for detected:
-  - Dark defects
-  - Bright defects
-- Uses `draw_overlay.py`:
-  - `DefectLoc` objects store color, thickness, rect, optional label.
-  - `DrawFigure` combines them and renders onto a copy of the image.
+- Displays the image with overlays for each defect.
+- Lets you visually confirm where the defects are:
+  - Single isolated pixels
+  - Small clusters
+  - Specific regions (corners, edges, etc.)
 
-Statistics shown in the UI include:
+When you are satisfied with the detection:
 
-- Count of dark and bright defects.
-- Mean DN of the frame (or region).
-- Optional cluster information, depending on configuration.
-
-This allows you to visually verify:
-
-- Whether defects are isolated or in clusters.
-- Whether they appear mostly in certain regions (corners, center, etc.).
-
----
-
-### CSV Export
-
-The **Export CSV** button writes detected defects into a **C-style CSV**:
+- Click **Export CSV** to save a defect list, for example:
 
 ```text
-:Vieworks Camera Defective Pixel Data
-:H,:V
-:dark field defective pixel
 x,y
 10,15
 100,200
-...
-:Bright field defective pixel
-x,y
 42,7
 ...
 ```
 
-- Dark defects first, then bright defects.
-- Each line is `x,y` (column, row).
-- The format is designed to be directly consumable by existing C/C++ tools or
-  camera firmware scripts.
+Each row represents one defect pixel at `(x, y)` (column, row).
 
-You can hand this CSV to other internal tools or embed it in your calibration pipeline.
+You can then:
+
+- Load this CSV into other tools (Python, Excel, internal test scripts).
+- Use it as a defect mask in your production calibration process.
 
 ---
 
-## Detection Logic & Algorithms
+## How the Detection Works (High Level)
 
-The file `defect_detection.py` contains the core algorithms.
+All detection logic is implemented in pure Python / NumPy in `defect_detection.py`.  
+The core ideas:
 
-### Format Handling
+1. **Normalize formats**
+   - Convert different input formats (Bayer RAW, RGB, Mono) into a common
+     grayscale representation suitable for analysis.
 
-- Converts disparate formats into a common working representation:
-  - Bayer RAW → flat representation (`bayer_to_flat`)
-  - RGB/BGR → green channel extraction (`extract_green_channel`)
-  - BGR16 → Mono16 (scaled) to match original C logic
-- Supports:
-  - 8-bit (`uint8`)
-  - ≥10-bit (`uint16` etc.) with appropriate scaling and thresholds
+2. **Compute local averages**
+   - Split the image into tiles based on **Block size**.
+   - For each tile, compute an average intensity (local brightness level).
+   - Interpolate between tile centers for smoother transitions.
 
-### Dark Defect Detection
+3. **Compare each pixel to its local average**
+   - For **dark defects**:
+     - Pixels that are significantly lower than the local average are marked.
+   - For **bright defects**:
+     - Pixels that are significantly higher (or lower, based on your configuration) than the local average are marked.
 
-Two main paths:
+4. **Group into regions**
+   - The app can group neighboring defect pixels into clusters.
+   - Rectangles around these clusters are drawn by `draw_overlay.py` over the image.
 
-1. **Native (simpler) dark detection**
-   - For Mono8: `pix >= thresholdDN`.
-   - For ≥10-bit: `pix > local_avg + thresholdDN`.
-
-2. **Cluster-based dark detection**
-   - Uses block/tile averages plus thresholds to detect regions of abnormally dark pixels.
-   - Aggregates into clusters and rectangular regions.
-
-### Bright Defect Detection
-
-- Uses block averages and **bilinear interpolation** (`avg_lin`) to estimate
-  the expected value at each pixel.
-- Compares each pixel against `(1 ± p/100) * avg_lin`.
-- Pixels outside this band are tagged as bright (or low, depending on configuration).
-- Clusters and rectangles are built from these binary masks.
-
-### Histogram Normalization
-
-- A display-only normalization (`histogram_normalize_c_identical`) reproduces the
-  original C logic:
-  - Same LUT behavior
-  - Same integer rounding
-- Ensures that images look familiar to users who are used to the legacy tool.
-
-Overall, the algorithms are carefully implemented to **match the C reference** so
-that threshold tuning and results remain consistent with existing workflows.
+You do **not** need to understand the math to use the app, but it is all available
+and readable for those who want to review or modify it.
 
 ---
 
@@ -269,17 +225,18 @@ that threshold tuning and results remain consistent with existing workflows.
 ### Python & OS
 
 - **Python**: 3.8+ recommended  
-- **OS**: Windows is the main target (for camera SDK), but file-only mode can work elsewhere.
+- **OS**: Windows recommended for camera support (Coaxlink + eGrabber).  
+  File-based mode can also work on other platforms if dependencies are available.
 
 ### Python dependencies
 
-Core dependencies:
+Minimal set:
 
-- `PyQt5` – GUI (Qt Widgets, Core, Gui)
-- `numpy` – numeric operations and frame buffers
-- `opencv-python` – image I/O and basic conversions
-- `tifffile` – better TIFF support (16-bit, large images)
-- `egrabber` – Euresys Coaxlink / eGrabber SDK (Python bindings) for live camera mode
+- `PyQt5` – GUI (Qt)
+- `numpy` – numeric operations
+- `opencv-python` – image I/O and conversions
+- `tifffile` – better TIFF support
+- `egrabber` – Euresys camera SDK bindings (for live camera mode)
 
 Example `requirements.txt`:
 
@@ -291,50 +248,49 @@ tifffile==2023.7.10
 egrabber==25.3.2.80
 ```
 
-> Without `egrabber` and a supported frame grabber, camera functions may fall back
-> to dummy behavior, but **file-based defect inspection** will still work.
+If you only want to work with image files and **not** with a camera, you can omit
+`egrabber` (but camera features will be disabled).
 
 ---
 
-## Running the Application
+## How to Run
 
-From the project root:
+1. Install dependencies:
 
-```bash
-pip install -r requirements.txt
-python main.py --log-level INFO --highdpi
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-Arguments:
+2. From the project root, run:
 
-- `--log-level` – `DEBUG`, `INFO`, `WARNING`, `ERROR` (default: `WARNING`)
-- `--highdpi` – enable Qt High-DPI scaling
-- `--icon` – optional path to a custom icon file
+   ```bash
+   python main.py --log-level INFO --highdpi
+   ```
 
-### Typical workflow
+   Options:
 
-1. **With camera**
-   - Connect the camera to a Coaxlink board.
-   - Start the app, click **Connect**, then **Snap**.
-   - Adjust thresholds and run Dark/Bright search.
-   - Inspect overlay, export CSV.
+   - `--log-level` : `DEBUG`, `INFO`, `WARNING`, `ERROR`
+   - `--highdpi`   : enable HiDPI scaling on high-resolution monitors
+   - `--icon`      : optional window icon file
 
-2. **With image files**
-   - Start the app, click **Open Image**.
-   - Make sure `PixelFormat (Load)` matches the file’s bit depth/layout.
-   - Adjust parameters and run detection.
-   - Export CSV for downstream use.
+3. Use the GUI:
+
+   - Connect a camera and press **Snap**, or press **Open Image**.
+   - Adjust detection parameters.
+   - Run **Dark Search** / **Bright Search**.
+   - Inspect overlay and **Export CSV**.
 
 ---
 
-## Limitations & Notes
+## Notes & Limitations
 
-- Camera integration currently targets Euresys Coaxlink + eGrabber.
-- Algorithms are designed for **static flat-field style images**; highly textured scenes
-  are not ideal for defect detection and may yield many false positives.
-- The tool does **not** attempt to model long-term drift or temperature behavior;
-  it is focused on pixel-level defects in snapshots under controlled conditions.
+- Designed for static, controlled images (e.g., flat-field / dark-field).
+- If you run it on complex scenes (textured images, moving objects), many pixels
+  may be marked as “defect” even though they are not sensor defects.
+- Camera support currently targets Euresys Coaxlink + eGrabber; other SDKs would
+  require adapting `core/camera_controller.py` and related code.
 
-If you need to extend the behavior (e.g., new CSV formats, alternative thresholds,
-custom visualizations), you can modify `defect_detection.py`, `defect_tool_ui.py`, or
-`draw_overlay.py` while keeping the rest of the structure intact.
+For most users, you can simply think of Defect Pixel Finder as:
+
+> “A Python desktop app that lets you look for bad pixels,  
+> without having to write a single line of code.”
