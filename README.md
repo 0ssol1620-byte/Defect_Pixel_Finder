@@ -1,8 +1,7 @@
 # Defect Pixel Finder
 
 **Defect Pixel Finder** is a PyQt5-based desktop tool for detecting **dark and bright defect pixels**
-in images from machine-vision cameras. It re-implements the original C-based defect map generator
-in pure Python while remaining compatible in terms of logic and CSV output format.
+in images from machine-vision cameras. 
 
 The app is designed so that:
 
